@@ -1,5 +1,11 @@
 # Health Center Data ELT
 
-In this SQL project, I created a database to store community health center data. Following the ELT process, I extracted the data from data.hrsa.gov, loaded the data into my SQL database tables, and transformed the data in preparation for data analysis.
+**Objective:** Extract, load, and transform (ELT) the UDS dataset to prepare it for analysis.
 
-The focus of this project was to use SQL queries to load and process the data, as well as perform some high level data analysis.
+**Data:** 2018-2023 Uniform Data System dataset (from the [HRSA website](data.HRSA.gov))
+
+**Tools:** SQL (MySQL)
+<br><br>
+
+## Summary
+In this ELT project, I created a MySQL database for storing and querying community health center data. Once the data was loaded into the appropriate tables, I used SQL to clean and manipulate the data to prepare it for future analysis. After the data had been wrangled, I queried the database to perform some high level data anlaysis.
