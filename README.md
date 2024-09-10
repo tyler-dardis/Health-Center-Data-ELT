@@ -16,7 +16,7 @@ In this ELT project, I created a MySQL database for storing and querying communi
 1. [Dataset](https://github.com/tyler-dardis/Health-Center-Data-ELT#dataset)
 2. [Create Tables](https://github.com/tyler-dardis/Health-Center-Data-ELT#create-tables)
 3. [Load Data](https://github.com/tyler-dardis/Health-Center-Data-ELT#load-data)
-4. Data Wrangling
+4. [Data Wrangling](https://github.com/tyler-dardis/Health-Center-Data-ELT/edit/main/README.md#data-wrangling)
 5. Data Validation
 6. Data Querying/Data Analysis
 
@@ -388,18 +388,17 @@ IGNORE 1 ROWS
 ```
 
 ### Set Primary Keys
-For each table storing annual data (all tables except 'sites'), I used the 'hc_name' and 'year' columns together as the composite primary key. However, some health centers have the same 'hc_name'. To ensure that each has a unique 'hc_name', I used the following queries to add the health center's 'state' to 'hc_name' for each duplicate 'hc_name', differentiating them. (This step was necessary to avoid errors when establishing the primary keys.)
+For each table storing annual data (all tables except 'sites'), I used the 'hc_name' and 'year' columns together as the composite primary key. However, some health centers have the same 'hc_name'. To ensure that each has a unique 'hc_name', I used the following queries to add the health center's 'state' to 'hc_name' for each duplicate, differentiating them. (This step was necessary to avoid errors when establishing the primary keys.)
 
 ```sql
-/* DIFFERENTIATE DUPLICATES IN hc_name COLUMN */
-
--- Create temp table containing all duplicate hc_names
+-- Create temp table containing all duplicate 'hc_name'
 CREATE TEMPORARY TABLE duplicate_hc_names AS
 SELECT hc_name
 FROM clinical_data
 GROUP BY hc_name
 HAVING COUNT(DISTINCT state) > 1;
 
+-- For all dupicates, add 'state' to 'hc_name' (repeat for all tables)
 UPDATE clinical_data
 SET hc_name = CONCAT(hc_name, ' (', state, ')')
 WHERE hc_name IN (SELECT hc_name FROM duplicate_hc_names);
@@ -422,16 +421,15 @@ WHERE hc_name IN (SELECT hc_name FROM duplicate_hc_names);
 
 DROP TEMPORARY TABLE duplicate_hc_names;
 
--- The following query should return no records if no duplicates remain.
--- (If this query DOES return records, this means there are health centers using the same hc_name within the same state.
+-- The following query should return nothing if no duplicates remain.
+-- (If this query DOES return any health center names, this means they are using the same hc_name within the same state.
 -- Similar to the methodology above, 'city' could then be used to differentiate between the duplicates.)
 SELECT hc_name
 FROM clinical_data
 GROUP BY hc_name
 HAVING COUNT(year) > 6;
 
-
-/* SET PRIMARY KEY FOR EACH TABLE. */
+-- Set primary key for each table
 ALTER TABLE patient_age_race ADD PRIMARY KEY (hc_name, year);
 ALTER TABLE clinical_data ADD PRIMARY KEY (hc_name, year);
 ALTER TABLE cost ADD PRIMARY KEY (hc_name, year);
@@ -441,55 +439,68 @@ ALTER TABLE sites ADD PRIMARY KEY (bphc_id);
 ```
 
 ## Data Wrangling
+Because HRSA has dedicated staff that review all UDS report submissions each year, the dataset does not require a significant amount of cleaning. However, performing some data wrangling, such as reformatting some of the columns (e.g., converting percentages to counts) and replacing NULL values where their true values can be determined, can better prepare the data for analysis. The follow queries were used to accomplish this.
 
+### 'patient_age_race' Table
+In the original dataset, patient age ranges (<18, 18-64, >64) are reported as percentages of total patients. The following queries create new columns for patient counts (#) by age range and add values to them (calculated by multiplying 'total_patients' by the corresponding age range percentages).
 ```sql
-/* DATA WRANGLING: patient_age_race TABLE */
-
--- In the original dataset, patient age ranges (<18, 18-64, >64) are reported as percentages of total patients. The following query creates new columns for patient counts (#) by age range.
+-- Create new columns for patient counts
 ALTER TABLE patient_age_race
 ADD COLUMN children_count INT,
 ADD COLUMN adults_18to64_count INT,
 ADD COLUMN adults_over64_count INT;
 
--- Add patient counts to the new columns (by multiplying total_patients by the corresponding age range percentages)
+-- Add patient counts to the new columns
 UPDATE patient_age_race 
 SET children_count = ROUND(total_patients * children),
     adults_18to64_count = ROUND(total_patients * adults_18to64),
     adults_over64_count = ROUND(total_patients * adults_over64);
-    
--- NULL values do not necessarily represent 0 in the dataset, however if only one of the age ranges is NULL, we can calculate its missing value. The following two queries replace NULLs where their correct values can be deduced.
--- (For example, if a row has a NULL value in the 'children' percentage column and the 'adults_18to64' and 'adults_over64' values are NOT NULL, we can calculate the value that should replace NULL so that the sum of the 3 columns equals 100%.)
+```
+
+NULL values do not necessarily represent 0 in the dataset. However, if only one of the age ranges is NULL, its missing value can be determined. The following two queries replace NULLs where their correct values can be deduced. (For example, if a row has a NULL value in the 'children' percentage column and the 'adults_18to64' and 'adults_over64' values are NOT NULL, we can calculate the value that should replace NULL so that the sum of the 3 columns equals 100%.)
+```sql
+-- Replace all NULLs in 'children' and 'children_count' columns where true values can be determined
 UPDATE patient_age_race 
 SET children = ROUND(1 - adults_18to64 - adults_over64, 7),
     children_count = (total_patients - adults_18to64_count - adults_over64_count)
 WHERE children IS NULL
-	AND adults_18to64 IS NOT NULL
-	AND adults_over64 IS NOT NULL;
+  AND adults_18to64 IS NOT NULL
+  AND adults_over64 IS NOT NULL;
+
+-- Replace all NULLs in 'adults_over64' and 'adults_over64_count' columns where true values can be determined
 UPDATE patient_age_race 
 SET adults_over64 = ROUND(1 - adults_18to64 - children, 7),
     adults_over64_count = (total_patients - adults_18to64_count - children_count)
 WHERE children IS NOT NULL
-	AND adults_18to64 IS NOT NULL
-	AND adults_over64 IS NULL;
+  AND adults_18to64 IS NOT NULL
+  AND adults_over64 IS NULL;
+```
 
--- While NULL values in percentage columns do not necessarily equal 0%, it can be deduced that where total_patients equals 0, the age range counts also equal 0.
+While NULL values in percentage columns do not necessarily equal 0%, it can be deduced that where total_patients equals 0, the age range counts also equal 0. (This is very uncommon in this dataset, but I did identify several health centers with 0 reported patients.)
+```sql
+-- Set all age range counts to 0 where 'total_patients' is 0.
 UPDATE patient_age_race
 SET children_count = 0,
     adults_18to64_count = 0,
     adults_over64_count = 0
 WHERE total_patients = 0;
-    
--- To confirm that the sum of the new columns is equal to the total_patients column, this query should return a 0 value. (Since NULL values do not necessarily equal 0, rows containing any NULL values in the count columns must be excluded from this validation query.)
+```
+
+To confirm that the sum of the new columns is equal to the 'total_patients' column, this query should return a 0 value. (Since NULL values do not necessarily equal 0, rows containing any NULL values in the count columns must be excluded from this validation query.)
+```sql    
+-- Validate age range counts
 SELECT SUM(children_count + adults_18to64_count + adults_over64_count) - SUM(total_patients) AS patient_count_variance
 FROM patient_age_race
-WHERE children_count IS NOT NULL AND
-	adults_18to64_count IS NOT NULL AND
-	adults_over64_count IS NOT NULL;
+WHERE children_count IS NOT NULL
+  AND adults_18to64_count IS NOT NULL
+  AND adults_over64_count IS NOT NULL;
+```
 
 
-/* DATA WRANGLING: cost TABLE */
-
--- Calculate and update NULL values in total_cost_per_patient by joining cost and patient_age_race tables
+### 'cost' Table
+Many of the 'total_cost_per_patient' values were reported as NULL. The following query calculates the correct values and updates all NULLs. To do this, the 'cost' and 'patient_age_race' tables are joined.
+```sql
+-- Update NULL values in 'total_cost_per_patient'
 UPDATE cost c
 JOIN patient_age_race p ON c.hc_name = p.hc_name AND c.year = p.year
 SET c.total_cost_per_patient = ROUND(c.total_cost / p.total_patients, 2)
