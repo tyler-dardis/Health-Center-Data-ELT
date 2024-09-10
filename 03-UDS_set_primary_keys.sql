@@ -34,7 +34,7 @@ DROP TEMPORARY TABLE duplicate_hc_names;
 SELECT hc_name
 FROM clinical_data
 GROUP BY hc_name
-HAVING COUNT(year) > 5;
+HAVING COUNT(year) > 6;
 
 
 /* SET PRIMARY KEY FOR EACH TABLE. */
