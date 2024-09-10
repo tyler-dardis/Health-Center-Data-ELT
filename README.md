@@ -4,13 +4,12 @@
 
 **Data:** 2018-2023 Uniform Data System dataset (from the [HRSA website](data.HRSA.gov))
 
-**Tools:** SQL (MySQL)
-<br><br>
+**Tools/Languages:** SQL database (and minimal python)
 
 ## Summary
 In this ELT project, I created a MySQL database for storing and querying community health center data. Once the data was loaded into the appropriate tables, I used SQL to wrangle the data to prepare it for future analysis. After the ELT process, I queried the database to perform some high level data analysis.
 
-**Note:** This page presents the project in a reader-friendly format, with some query outputs. All of the raw .sql files are also available in this repository.
+**Note:** This page presents the project in a reader-friendly format, with some query results. All of the raw .sql files are also available in this repository.
 
 ## Table of Contents
 1. [Dataset](https://github.com/tyler-dardis/Health-Center-Data-ELT#dataset)
@@ -24,6 +23,8 @@ In this ELT project, I created a MySQL database for storing and querying communi
 ## Dataset
 The Health Resources and Services Administration (HRSA) oversees the national health center program, which includes 1,496 health centers serving 32.5 million patients across the U.S. In overseeing this program, HRSA collects financial and clinical data from health centers via the annual Uniform Data System report. While some of the data reported is proprietary and not publicly available, HRSA publishes some of the dataset. This dataset is available for download on their website in Excel format and includes the most recent five years of data. (I downloaded the dataset before and after the publication of the 2023 UDS report, so my data includes six years.)
 
+The data is available as two separate downloads, one for each of the two health center types, Federally Qualified Health Centers (FQHCs) and Look-Alike health centers. I've combined these into the same tables, adding 'hc_type' columns to differentiate between the two. (For those unfamiliar with these terms, a health center's type indicates their federal funding status. FQHCs receive HRSA service grants, while Look-Alikes do not.)
+
 The UDS dataset is split into five categories:
 - Clinical data
 - Cost
@@ -34,6 +35,7 @@ The UDS dataset is split into five categories:
 I also used a dataset that includes records of all health center sites/locations. While this is not a part of the annual HRSA report download, I found this dataset relevant and useful to this project.
 
 **Note:** The UDS data download is broken out by year into separate Excel files. Each year's Excel file has separate sheets for each data category. To minimize the time spent saving these as .csv files to import to my database, I used a simple Python script to extract each tab and compile all years into one .csv file for each data category. As this project is focused on SQL, I won't detail the python script here.
+
 
 ## Create Tables
 Once the .csv files were prepared and ready to import, I created six tables in my database, one for each of the categories of data:
@@ -202,6 +204,7 @@ CREATE TABLE sites (
     data_collection_date DATE
 );
 ```
+
 
 ## Load Data
 After the tables were created, I loaded the data from the .csv files into their corresponding tables.
@@ -389,7 +392,7 @@ IGNORE 1 ROWS
 ```
 
 ### Set Primary Keys
-For each table storing annual data (all tables except 'sites'), I used the 'hc_name' and 'year' columns together as the composite primary key. However, some health centers have the same 'hc_name'. To ensure that each has a unique 'hc_name', I used the following queries to add the health center's 'state' to 'hc_name' for each duplicate, differentiating them. (This step was necessary to avoid errors when establishing the primary keys.)
+For each table storing annual data (all tables except 'sites'), I used the 'hc_name' and 'year' columns together as the composite primary key. However, some health centers use the same 'hc_name'. To ensure that each has a unique 'hc_name', I used the following queries to add the health center's 'state' to 'hc_name' for each duplicate, differentiating them. (This step was necessary to avoid errors when establishing the primary keys.)
 
 ```sql
 -- Create temp table containing all duplicate 'hc_name'
@@ -438,6 +441,7 @@ ALTER TABLE payer_mix_fpl ADD PRIMARY KEY (hc_name, year);
 ALTER TABLE services ADD PRIMARY KEY (hc_name, year);
 ALTER TABLE sites ADD PRIMARY KEY (bphc_id);
 ```
+
 
 ## Data Wrangling
 Because HRSA has dedicated staff that review all UDS report submissions each year, the dataset does not require a significant amount of cleaning. However, performing some data wrangling, such as reformatting some of the columns (e.g., converting percentages to counts) and replacing NULL values where their true values can be determined, can better prepare the data for analysis. The follow queries were used to accomplish this.
@@ -499,7 +503,10 @@ WHERE children_count IS NOT NULL
   AND adults_18to64_count IS NOT NULL
   AND adults_over64_count IS NOT NULL;
 ```
-
+#### Query Result:
+| patient_count_variance |
+|------------------------|
+| 0                      |
 
 ### 'cost' Table
 Many of the 'total_cost_per_patient' values were NULL. The following query calculates the correct values and updates all NULLs. To do this, the 'cost' and 'patient_age_race' tables are joined.
@@ -533,7 +540,6 @@ SET pm.uninsured_count = ROUND(pm.uninsured * par.total_patients),
 ```
 
 Also similar to the age ranges in the 'patient_age_race' table, if only one of the payer columns is NULL, its missing value can be determined. The following four queries replace NULLs where their correct values can be deduced.
-
 ```sql
 -- Replace all NULLs in payer mix columns where true values can be determined
 UPDATE payer_mix_fpl AS pm
@@ -574,7 +580,6 @@ WHERE pm.uninsured IS NOT NULL
 ```
 
 It can also be deduced that where one payer is 100%, all others are 0%.
-
 ```sql
 -- Set payer mix values to 0 where appropriate
 UPDATE payer_mix_fpl
@@ -637,6 +642,7 @@ SET s.medical_count = ROUND(s.medical * par.total_patients),
     s.vision_count = ROUND(s.vision * par.total_patients),
     s.enabling_count = ROUND(s.enabling * par.total_patients);
 ```
+
 ### 'sites' Table
 Health center site zip codes were not reported consistently, as some included a 4-digit extension, while others did not. The following queries standardize the format.
 
@@ -663,8 +669,8 @@ SET hc_zipcode_ext = CASE
     END,
     hc_zipcode = LEFT(hc_zipcode, 5);
 ```
-Phone numbers were also not reported consistently, some including an extension.
 
+Phone numbers were also not reported in a consistent format.
 ```sql
 -- Standardize phone numbers
 ALTER TABLE sites
@@ -678,11 +684,13 @@ SET site_phone_ext = CASE
     site_phone = LEFT(site_phone, 12);
 ```
 
+
 ## Data Validation
 To validate the accuracy of the data after wrangling, I used the following queries to compare my processed data with the national aggregated summaries published on the [HRSA website](https://data.hrsa.gov/tools/data-reporting/program-data/national).
 
 **Note:** HRSA publishes separate national summaries for FQHC and Look-Alike health centers. The queries below validate FQHC data. To validate Look-Alike data, the same queries could be run with 'Look-Alike' replacing 'FQHC' in the WHERE clause.
 
+### Age Range Count Validation
 ```sql
 -- Confirm patient counts by age range
 SELECT year,
@@ -694,8 +702,17 @@ FROM patient_age_race
 WHERE hc_type = 'FQHC'
 GROUP BY year;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| year  | SUM(total_patients) | SUM(children_count) | SUM(adults_18to64_count) | SUM(adults_over64_count) |
+|-------|----------------|----------------|--------------------|----------------------|
+| 2018  | 28379680      | 8736509      | 17041599         | 2601572            |
+| 2019  | 29836613      | 9204942      | 17767170         | 2864501            |
+| 2020  | 28590897      | 7872234      | 17786985         | 2931650            |
+| 2021  | 30193278      | 8635363      | 18268669         | 3289246            |
+| 2022  | 30517276      | 8824109      | 18137909         | 3555258            |
+| 2023  | 31277341      | 9110850      | 18458338         | 3708153            |
 
+### Payer Type Count Validation
 ```sql
 -- Confirm patient counts by payer type
 SELECT year,
@@ -707,8 +724,17 @@ FROM payer_mix_fpl
 WHERE hc_type = 'FQHC'
 GROUP BY year;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| year  | SUM(uninsured_count) | SUM(medicaid_count) | SUM(medicare_count) | SUM(other_payer_count) |
+|-------|----------------------|---------------------|---------------------|------------------------|
+| 2018  | 6419472              | 13905805            | 2741037             | 5313366                |
+| 2019  | 6783710              | 14380852            | 2927781             | 5744270                |
+| 2020  | 6239686              | 13399491            | 2973387             | 5978309                |
+| 2021  | 6137142              | 14603356            | 3213947             | 6238826                |
+| 2022  | 5681091              | 15331626            | 3330416             | 6174121                |
+| 2023  | 5601394              | 15777227            | 3433995             | 6464702                |
 
+### Service Type Count Validation
 ```sql
 -- Confirm patient counts by service type
 SELECT year,
@@ -722,8 +748,17 @@ FROM services
 WHERE hc_type = 'FQHC'
 GROUP BY year;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| year  | SUM(medical_count) | SUM(dental_count) | SUM(mental_health_count) | SUM(substance_abuse_count) | SUM(vision_count) | SUM(enabling_count) |
+|-------|--------------------|-------------------|--------------------------|----------------------------|-------------------|---------------------|
+| 2018  | 23827122            | 6406667           | 2249876                  | 223390                     | 746087            | 2593393             |
+| 2019  | 25029835            | 6712204           | 2581706                  | 325732                     | 828977            | 2608861             |
+| 2020  | 24529374            | 5155474           | 2512198                  | 294387                     | 612035            | 2085776             |
+| 2021  | 25759024            | 5700965           | 2659248                  | 285394                     | 769117            | 2241376             |
+| 2022  | 25915807            | 6019752           | 2729559                  | 298387                     | 827941            | 2377090             |
+| 2023  | 26581300            | 6382904           | 2790220                  | 293880                     | 920498            | 2555152             |
 
+### Cost and Grant Expenditure Validation
 ```sql
 -- Confirm cost and grant expenditure totals (JOIN is used to calculate national cost per patient)
 SELECT c.year,
@@ -735,16 +770,24 @@ JOIN patient_age_race AS p ON c.hc_name = p.hc_name AND c.year = p.year
 WHERE c.hc_type = 'FQHC'
 GROUP BY c.year;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| year  | SUM(total_cost) | SUM(svc_grant_exp) | total_cost_per_patient |
+|-------|-----------------|--------------------|------------------------|
+| 2018  | 28100675862      | 4718365832         | 990.17                 |
+| 2019  | 31161368639      | 4929883133         | 1044.40                |
+| 2020  | 33074410001      | 4734433643         | 1156.82                |
+| 2021  | 36793239742      | 5181329158         | 1218.59                |
+| 2022  | 40863346675      | 5042113995         | 1339.02                |
+| 2023  | 46011772825      | 5078647217         | 1471.09                |
 
-### Conclusion:
+### Conclusion After Validating:
 Most national totals in my dataset match exactly with HRSA's published national totals. Some totals show small variances due to NULL values at the health center level, where HRSA suppresses patient count values less than 16 for confidentiality, causing these values to be included in HRSA's aggregated totals but excluded from mine. These variances are negligible, representing a difference of less than 0.001% between datasets. (Note that these variances were also minimized during data wrangling, when NULL values were replaced where their true values could be deduced.)
+
 
 ## Data Querying/Analysis
 After completing the ELT process, I used the queries below for some high level, exploratory data analysis.
 
 First, to display full state names in my query results and differentiate between states (including DC) and territories, I ran this query to create a temporary table for use later.
-
 ```sql
 -- Create temporary table containing full state names and state/territory type
 CREATE TEMPORARY TABLE state_names AS
@@ -761,21 +804,30 @@ FROM sites;
 ```sql
 -- FQHC patient age distribution (national) by year
 SELECT year,
-       SUM(children_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_children,
-       SUM(adults_18to64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_adults_18to64,
-       SUM(adults_over64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_adults_over64
+       ROUND(SUM(children_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100, 2) AS pct_children,
+       ROUND(SUM(adults_18to64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100, 2) AS pct_adults_18to64,
+       ROUND(SUM(adults_over64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100, 2) AS pct_adults_over64
 FROM patient_age_race
 WHERE hc_type = 'FQHC'
 GROUP BY year;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| year | pct_children | pct_adults_18to64 | pct_adults_over64 |
+|------|--------------|-------------------|-------------------|
+| 2018 | 30.78        | 60.05             | 9.17              |
+| 2019 | 30.85        | 59.55             | 9.60              |
+| 2020 | 27.53        | 62.21             | 10.25             |
+| 2021 | 28.60        | 60.51             | 10.89             |
+| 2022 | 28.92        | 59.43             | 11.65             |
+| 2023 | 29.13        | 59.02             | 11.86             |
+
 
 ```sql
 -- FQHC patient age distribution by state (5-year average)
 SELECT s.state_name,
-       SUM(p.children_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_children,
-       SUM(p.adults_18to64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_adults_18to64,
-       SUM(p.adults_over64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_adults_over64
+       ROUND(SUM(p.children_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100, 2) AS pct_children,
+       ROUND(SUM(p.adults_18to64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100, 2) AS pct_adults_18to64,
+       ROUND(SUM(p.adults_over64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100, 2) AS pct_adults_over64
 FROM patient_age_race AS p
 JOIN state_names AS s ON p.state = s.state
 WHERE p.year BETWEEN 2019 AND 2023
@@ -784,7 +836,60 @@ WHERE p.year BETWEEN 2019 AND 2023
 GROUP BY s.state_name
 ORDER BY s.state_name;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| state_name              | pct_children | pct_adults_18to64 | pct_adults_over64 |
+|-------------------------|--------------|-------------------|-------------------|
+| Alabama             | 23.94        | 65.68             | 10.37             |
+| Alaska              | 23.67        | 60.48             | 15.84             |
+| Arizona             | 29.10        | 58.19             | 12.70             |
+| Arkansas            | 25.30        | 61.49             | 13.20             |
+| California          | 30.06        | 60.35             | 9.59              |
+| Colorado            | 30.36        | 60.68             | 8.96              |
+| Connecticut         | 32.10        | 59.20             | 8.70              |
+| Delaware            | 24.71        | 65.87             | 9.43              |
+| District of Columbia| 25.39        | 66.79             | 7.81              |
+| Florida             | 35.09        | 55.35             | 9.56              |
+| Georgia             | 24.60        | 63.82             | 11.59             |
+| Hawaii              | 29.70        | 56.01             | 14.29             |
+| Idaho               | 22.02        | 63.10             | 14.88             |
+| Illinois            | 32.69        | 59.95             | 7.36              |
+| Indiana             | 36.78        | 55.76             | 7.46              |
+| Iowa                | 31.73        | 60.51             | 7.77              |
+| Kansas              | 33.50        | 55.76             | 10.74             |
+| Kentucky            | 29.67        | 58.43             | 11.90             |
+| Louisiana           | 25.59        | 65.62             | 8.79              |
+| Maine               | 20.20        | 56.41             | 23.39             |
+| Maryland            | 27.47        | 62.26             | 10.28             |
+| Massachusetts       | 21.05        | 66.47             | 12.48             |
+| Michigan            | 26.89        | 61.42             | 11.68             |
+| Minnesota           | 24.04        | 64.15             | 11.81             |
+| Mississippi         | 25.02        | 62.11             | 12.87             |
+| Missouri            | 35.01        | 55.67             | 9.31              |
+| Montana             | 17.12        | 65.48             | 17.40             |
+| Nebraska            | 31.74        | 61.02             | 7.24              |
+| Nevada              | 25.70        | 64.20             | 10.10             |
+| New Hampshire       | 22.34        | 59.47             | 18.19             |
+| New Jersey          | 33.20        | 59.73             | 7.08              |
+| New Mexico          | 20.54        | 61.57             | 17.89             |
+| New York            | 28.91        | 60.38             | 10.72             |
+| North Carolina      | 20.84        | 64.55             | 14.61             |
+| North Dakota        | 29.77        | 58.05             | 12.18             |
+| Ohio                | 27.80        | 61.47             | 10.73             |
+| Oklahoma            | 29.45        | 57.70             | 12.85             |
+| Oregon              | 25.63        | 62.18             | 12.18             |
+| Pennsylvania        | 27.90        | 59.47             | 12.63             |
+| Rhode Island        | 26.29        | 63.56             | 10.15             |
+| South Carolina      | 24.92        | 59.62             | 15.46             |
+| South Dakota        | 29.35        | 54.38             | 16.28             |
+| Tennessee           | 22.31        | 65.30             | 12.39             |
+| Texas               | 35.59        | 56.22             | 8.19              |
+| Utah                | 26.87        | 63.77             | 9.36              |
+| Vermont             | 17.62        | 58.01             | 24.37             |
+| Virginia            | 23.26        | 61.28             | 15.47             |
+| Washington          | 29.85        | 60.40             | 9.74              |
+| West Virginia       | 24.87        | 57.57             | 17.56             |
+| Wisconsin           | 33.94        | 56.16             | 9.90              |
+| Wyoming             | 22.93        | 61.91             | 15.16             |
 
 ```sql
 -- Top 10 health centers with the highest percentage of patients representing racial or ethnic minorities in 2023 (excluding health centers based in US territories)
@@ -801,7 +906,19 @@ GROUP BY p.hc_name, p.city, p.state
 ORDER BY pct_race_ethno_minority DESC
 LIMIT 10;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| hc_name                                          | city         | state | hc_type | pct_race_ethno_minority |
+|-------------------------------------------------|--------------|-------|---------|-------------------------|
+| FAMILY HEALTH CARE CENTERS OF GREATER LOS ANGELES, INC. | BELL GARDENS | CA    | FQHC    | 100                     |
+| CALI MED CORPORATION                            | SOUTH GATE   | CA    | Look-Alike | 100                     |
+| URBAN HEALTH PLAN, INC.                         | BRONX        | NY    | FQHC    | 99.74                   |
+| SOUTH CAROLINA PRIMARY HEALTH CARE ASSOCIATION  | COLUMBIA     | SC    | FQHC    | 99.71                   |
+| MORRIS HEIGHTS HEALTH CENTER                    | BRONX        | NY    | FQHC    | 99.52                   |
+| BROWNSVILLE COMMUNITY DEVELOPMENT CORP.         | BROOKLYN     | NY    | FQHC    | 99.52                   |
+| QUALITY COMMUNITY HEALTH CARE, INC.             | PHILADELPHIA | PA    | FQHC    | 99.49                   |
+| PROTEUS EMPLOYMENT OPPORTUNITIES, INC.          | DES MOINES   | IA    | FQHC    | 99.48                   |
+| MAINE MOBILE HEALTH PROGRAM INC.                 | AUGUSTA      | ME    | FQHC    | 99.37                   |
+| LA CLINICA DEL PUEBLO                           | WASHINGTON   | DC    | FQHC    | 99.29                   |
 
 ```sql
 -- Number of patients served at FQHCs in US territories in years 2018-2023
@@ -819,6 +936,17 @@ WHERE s.state_type = 'territory'
 GROUP BY s.state_name
 ORDER BY pts_2023 DESC;
 ```
+#### Query Result:
+| territory_name             | pts_2018 | pts_2019 | pts_2020 | pts_2021 | pts_2022 | pts_2023 |
+|----------------------------|----------|----------|----------|----------|----------|----------|
+| Puerto Rico                | 392925   | 425830   | 377472   | 413219   | 446903   | 466994   |
+| American Samoa             | 16172    | 20517    | 13308    | 11117    | 22646    | 25018    |
+| Federated States of Micronesia | 26781   | 25479    | 27360    | 21288    | 26910    | 20890    |
+| U.S. Virgin Islands        | 17650    | 19214    | 14914    | 15930    | 16895    | 15292    |
+| Republic of Palau          | 14728    | 14383    | 14019    | 14576    | 13684    | 12939    |
+| Guam                       | 11874    | 11592    | 8141     | 8012     | 8698     | 8551     |
+| Marshall Islands           | 7779     | 7854     | 7703     | 7804     | 6909     | 6321     |
+| Northern Mariana Islands   | 1630     | 1855     | 1875     | 2445     | 3221     | 3725     |
 
 ### Clinical Outcomes and Metrics
 
@@ -842,7 +970,14 @@ WHERE c.year = 2023
 ORDER BY p.total_patients DESC
 LIMIT 5;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| hc_name                             | city      | state | total_patients | cervical_cancer | adult_tobacco_use | colorectal_cancer | depression | breast_cancer | hiv    |
+|-------------------------------------|-----------|-------|----------------|------------------|-------------------|-------------------|------------|---------------|--------|
+| ALTA MED HEALTH SERVICES CORPORATION | COMMERCE | CA    | 276326         | 69.51            | 92.43             | 54.8              | 82.36      | 63.59         | 54.35  |
+| FAMILY HEALTHCARE NETWORK           | VISALIA   | CA    | 238703         | 57.72            | 95.09             | 40.92             | 88.71      | 53.11         | 54.51  |
+| SUN RIVER HEALTH, INC.              | PEEKSKILL | NY    | 234160         | 65.99            | 82.41             | 41.56             | 59.62      | 55.21         | 67.78  |
+| SEA-MAR COMMUNITY HEALTH CENTER     | SEATTLE   | WA    | 221269         | 47.56            | 91.29             | 35.75             | 82.52      | 50.47         | 39.74  |
+| DENVER HEALTH & HOSPITAL AUTHORITY  | DENVER    | CO    | 199757         | 61.2             | 90.15             | 48.81             | 58.49      | 72.57         | 57.96  |
 
 ```sql
 -- Percentage of FQHC patients with hypertension, diabetes, and asthma (5 year average)
@@ -853,6 +988,10 @@ SELECT ROUND(AVG(hypertension)*100, 2) AS hypertension_pct,
 FROM clinical_data
 WHERE year BETWEEN 2019 AND 2023;
 ```
+#### Query Result:
+| hypertension_pct | diabetes_pct | asthma_pct | hiv_pct |
+|------------------|--------------|------------|---------|
+| 30.16            | 15.69        | 5.2        | 1.54    |
 
 ### Costs and Grant Expenditures
 
@@ -864,7 +1003,15 @@ FROM cost
 WHERE hc_type = 'FQHC'
 GROUP BY year;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| year | pct_grant_funded |
+|------|------------------|
+| 2018 | 16.79            |
+| 2019 | 15.82            |
+| 2020 | 14.31            |
+| 2021 | 14.08            |
+| 2022 | 12.34            |
+| 2023 | 11.04            |
 
 ```sql
 -- Top 5 states with the highest grant expenditure per patient in 2023
@@ -880,6 +1027,14 @@ GROUP BY s.state_name
 ORDER BY grant_exp_per_patient DESC
 LIMIT 5;
 ```
+#### Query Result:
+| state_name      | grant_exp_per_patient |
+|-----------------|------------------------|
+| Alaska          | 672.48                 |
+| Montana         | 366.57                 |
+| Delaware        | 343.29                 |
+| North Dakota    | 324.27                 |
+| New Hampshire   | 295.18                 |
 
 ### Payer Mix and Socioeconomic Factors
 
@@ -895,7 +1050,15 @@ WHERE patients_at_below_100_fpl > 0.75
 GROUP BY year
 ORDER BY year;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| year | avg_medicaid_pct | avg_medicare_pct | avg_other_payer_pct | avg_uninsured_pct |
+|------|------------------|------------------|---------------------|-------------------|
+| 2018 | 49.97            | 8.46             | 12.92               | 28.65             |
+| 2019 | 49.47            | 8.46             | 13.52               | 28.55             |
+| 2020 | 48.77            | 9.17             | 14.71               | 27.57             |
+| 2021 | 49.00            | 9.40             | 15.02               | 26.75             |
+| 2022 | 51.74            | 9.69             | 14.55               | 24.24             |
+| 2023 | 52.31            | 9.94             | 15.61               | 22.31             |
 
 ```sql
 -- Number of FQHCs where total costs associated with uninsured patients exceed total service grant expenditures.
@@ -908,6 +1071,15 @@ WHERE c.svc_grant_exp < (c.total_cost_per_patient*pm.uninsured_count)
 GROUP BY year
 ORDER BY year;
 ```
+#### Query Result:
+| year | fqhc_count |
+|------|------------|
+| 2018 | 569        |
+| 2019 | 614        |
+| 2020 | 672        |
+| 2021 | 636        |
+| 2022 | 641        |
+| 2023 | 676        |
 
 ### Service Utilization
 
@@ -923,7 +1095,15 @@ WHERE p.total_patients < 2500
 GROUP BY s.year
 ORDER BY s.year;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| year | avg_medical_pct | avg_dental_pct | avg_mental_health_pct |
+|------|------------------|----------------|------------------------|
+| 2018 | 88.33            | 14.87          | 11.35                  |
+| 2019 | 87.83            | 15.22          | 13.57                  |
+| 2020 | 88.12            | 13.76          | 12.97                  |
+| 2021 | 86.6             | 15.75          | 13.37                  |
+| 2022 | 86.12            | 15.78          | 13.19                  |
+| 2023 | 86.7             | 15.61          | 15.24                  |
 
 ```sql
 -- Comparing mental health utilization and depression screening rates.
@@ -947,7 +1127,13 @@ WHERE s.mental_health > 0
 GROUP BY d.dep_screening_bin
 ORDER BY d.dep_screening_bin;
 ```
-# INSERT SCREENSHOT OF OUTPUT HERE
+#### Query Result:
+| dep_screening_bin | avg_mental_health_utilization |
+|-------------------|-------------------------------|
+| 0_to_24_pct       | 11.43                         |
+| 25_to_49_pct      | 10.34                         |
+| 50_to_74_pct      | 10.63                         |
+| 75_to_100_pct     | 10.58                         |
 
 ```sql
 -- Drop temporary table created for above queries
