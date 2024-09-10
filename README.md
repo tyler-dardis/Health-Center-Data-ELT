@@ -1143,4 +1143,4 @@ DROP TEMPORARY TABLE state_names;
 ## Related Projects
 After preparing this UDS data in my SQL database, I used the processed data in two other projects:
 - [Health Center Dashboards](https://github.com/tyler-dardis/Health-Center-Dashboards) - Built two Tableau dashboards, one to visualize aggregated data at the national level, and a second to visualize data at the individual health center level (with an interactive dropdown, allowing the user to select any one health center).
-- Health Center Payer Mix Predictive Model - Developed a linear regression model used to predict payer mix percentages of health centers.
+- [Payer Mix Linear Regression](https://github.com/tyler-dardis/Payer-Mix-Linear-Regression) - Developed a linear regression model to predict payer mix percentages of health centers.
