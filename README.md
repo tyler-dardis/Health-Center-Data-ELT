@@ -19,7 +19,7 @@ In this ELT project, I created a MySQL database for storing and querying communi
 4. [Data Wrangling](https://github.com/tyler-dardis/Health-Center-Data-ELT#data-wrangling)
 5. [Data Validation](https://github.com/tyler-dardis/Health-Center-Data-ELT#data-validation)
 6. [Data Querying/Analysis](https://github.com/tyler-dardis/Health-Center-Data-ELT#data-queryinganalysis)
-7. [Related Projects](
+7. [Related Projects](https://github.com/tyler-dardis/Health-Center-Data-ELT#related-projects)
 
 ## Dataset
 The Health Resources and Services Administration (HRSA) oversees the national health center program, which includes 1,496 health centers serving 32.5 million patients across the U.S. In overseeing this program, HRSA collects financial and clinical data from health centers via the annual Uniform Data System report. While some of the data reported is proprietary and not publicly available, HRSA publishes some of the dataset. This dataset is available for download on their website in Excel format and includes the most recent five years of data. (I downloaded the dataset before and after the publication of the 2023 UDS report, so my data includes six years.)
@@ -956,5 +956,5 @@ DROP TEMPORARY TABLE state_names;
 
 ## Related Projects
 After preparing this UDS data in my SQL database, I used the processed data in two other projects:
-- [Health Center Dashboards](https://github.com/tyler-dardis/Health-Center-Dashboards)
-- Health Center Payer Mix Predictive Model
+- [Health Center Dashboards](https://github.com/tyler-dardis/Health-Center-Dashboards) - Built two Tableau dashboards, one to visualize aggregated data at the national level, and a second to visualize data at the individual health center level (with an interactive dropdown, allowing the user to select any one health center).
+- Health Center Payer Mix Predictive Model - Developed a linear regression model used to predict payer mix percentages of health centers.
