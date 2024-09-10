@@ -15,18 +15,18 @@ FROM sites;
 
 -- FQHC patient age distribution (national) by year
 SELECT year,
-	   SUM(children_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_children,
-	   SUM(adults_18to64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_adults_18to64,
-       SUM(adults_over64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_adults_over64
+       ROUND(SUM(children_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100, 2) AS pct_children,
+       ROUND(SUM(adults_18to64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100, 2) AS pct_adults_18to64,
+       ROUND(SUM(adults_over64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100, 2) AS pct_adults_over64
 FROM patient_age_race
 WHERE hc_type = 'FQHC'
 GROUP BY year;
 
 -- FQHC patient age distribution by state (5-year average)
 SELECT s.state_name,
-       SUM(p.children_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_children,
-	   SUM(p.adults_18to64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_adults_18to64,
-       SUM(p.adults_over64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_adults_over64
+       ROUND(SUM(p.children_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100, 2) AS pct_children,
+       ROUND(SUM(p.adults_18to64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100, 2) AS pct_adults_18to64,
+       ROUND(SUM(p.adults_over64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100, 2) AS pct_adults_over64
 FROM patient_age_race AS p
 JOIN state_names AS s
 	 ON p.state = s.state
