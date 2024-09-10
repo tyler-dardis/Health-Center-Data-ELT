@@ -18,14 +18,15 @@ UPDATE patient_age_race
 SET children = ROUND(1 - adults_18to64 - adults_over64, 7),
     children_count = (total_patients - adults_18to64_count - adults_over64_count)
 WHERE children IS NULL
-	AND adults_18to64 IS NOT NULL
-	AND adults_over64 IS NOT NULL;
+  AND adults_18to64 IS NOT NULL
+  AND adults_over64 IS NOT NULL;
+
 UPDATE patient_age_race 
 SET adults_over64 = ROUND(1 - adults_18to64 - children, 7),
     adults_over64_count = (total_patients - adults_18to64_count - children_count)
 WHERE children IS NOT NULL
-	AND adults_18to64 IS NOT NULL
-	AND adults_over64 IS NULL;
+  AND adults_18to64 IS NOT NULL
+  AND adults_over64 IS NULL;
 
 -- While NULL values in percentage columns do not necessarily equal 0%, it can be deduced that where total_patients equals 0, the age range counts also equal 0.
 UPDATE patient_age_race
@@ -37,9 +38,9 @@ WHERE total_patients = 0;
 -- To confirm that the sum of the new columns is equal to the total_patients column, this query should return a 0 value. (Since NULL values do not necessarily equal 0, rows containing any NULL values in the count columns must be excluded from this validation query.)
 SELECT SUM(children_count + adults_18to64_count + adults_over64_count) - SUM(total_patients) AS patient_count_variance
 FROM patient_age_race
-WHERE children_count IS NOT NULL AND
-	adults_18to64_count IS NOT NULL AND
-	adults_over64_count IS NOT NULL;
+WHERE children_count IS NOT NULL
+  AND adults_18to64_count IS NOT NULL
+  AND adults_over64_count IS NOT NULL;
 
 
 /* DATA WRANGLING: cost TABLE */
@@ -49,7 +50,7 @@ UPDATE cost c
 JOIN patient_age_race p ON c.hc_name = p.hc_name AND c.year = p.year
 SET c.total_cost_per_patient = ROUND(c.total_cost / p.total_patients, 2)
 WHERE c.total_cost_per_patient IS NULL
-	AND p.total_patients <> 0 ;
+  AND p.total_patients <> 0 ;
 
 
 /* DATA WRANGLING: payer_mix_fpl TABLE */
@@ -75,33 +76,36 @@ JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.uninsured = ROUND(1 - pm.medicaid - pm.medicare - pm.other_payer, 7),
     pm.uninsured_count = (par.total_patients - pm.medicaid_count - pm.medicare_count - pm.other_payer_count)
 WHERE pm.uninsured IS NULL
-	AND pm.medicaid IS NOT NULL
-	AND pm.medicare IS NOT NULL
-    AND pm.other_payer IS NOT NULL;
+  AND pm.medicaid IS NOT NULL
+  AND pm.medicare IS NOT NULL
+  AND pm.other_payer IS NOT NULL;
+
 UPDATE payer_mix_fpl AS pm
 JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.medicaid = ROUND(1 - pm.uninsured - pm.medicare - pm.other_payer, 7),
     pm.medicaid_count = (par.total_patients - pm.uninsured_count - pm.medicare_count - pm.other_payer_count)
 WHERE pm.uninsured IS NOT NULL
-	AND pm.medicaid IS NULL
-	AND pm.medicare IS NOT NULL
-    AND pm.other_payer IS NOT NULL;
+  AND pm.medicaid IS NULL
+  AND pm.medicare IS NOT NULL
+  AND pm.other_payer IS NOT NULL;
+
 UPDATE payer_mix_fpl AS pm
 JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.medicare = ROUND(1 - pm.uninsured - pm.medicaid - pm.other_payer, 7),
     pm.medicare_count = (par.total_patients - pm.uninsured_count - pm.medicaid_count - pm.other_payer_count)
 WHERE pm.uninsured IS NOT NULL
-	AND pm.medicaid IS NOT NULL
-	AND pm.medicare IS NULL
-    AND pm.other_payer IS NOT NULL;
+  AND pm.medicaid IS NOT NULL
+  AND pm.medicare IS NULL
+  AND pm.other_payer IS NOT NULL;
+
 UPDATE payer_mix_fpl AS pm
 JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.other_payer = ROUND(1 - pm.uninsured - pm.medicaid - pm.medicare, 7),
     pm.other_payer_count = (par.total_patients - pm.uninsured_count - pm.medicaid_count - pm.medicare_count)
 WHERE pm.uninsured IS NOT NULL
-	AND pm.medicaid IS NOT NULL
-	AND pm.medicare IS NOT NULL
-    AND pm.other_payer IS NULL;
+  AND pm.medicaid IS NOT NULL
+  AND pm.medicare IS NOT NULL
+  AND pm.other_payer IS NULL;
 
 -- Set all other payers to 0 where one payer is 100%. (Some of these instances are reported as NULL in the original dataset.)
 UPDATE payer_mix_fpl
@@ -112,6 +116,7 @@ SET medicaid = 0,
     other_payer = 0,
     other_payer_count = 0
 WHERE uninsured = 1;
+
 UPDATE payer_mix_fpl
 SET uninsured = 0,
     uninsured_count = 0,
@@ -120,6 +125,7 @@ SET uninsured = 0,
     other_payer = 0,
     other_payer_count = 0
 WHERE medicaid = 1;
+
 UPDATE payer_mix_fpl
 SET uninsured = 0,
     uninsured_count = 0,
@@ -128,6 +134,7 @@ SET uninsured = 0,
     other_payer = 0,
     other_payer_count = 0
 WHERE medicare = 1;
+
 UPDATE payer_mix_fpl
 SET uninsured = 0,
     uninsured_count = 0,
