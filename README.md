@@ -16,9 +16,9 @@ In this ELT project, I created a MySQL database for storing and querying communi
 1. [Dataset](https://github.com/tyler-dardis/Health-Center-Data-ELT#dataset)
 2. [Create Tables](https://github.com/tyler-dardis/Health-Center-Data-ELT#create-tables)
 3. [Load Data](https://github.com/tyler-dardis/Health-Center-Data-ELT#load-data)
-4. [Data Wrangling](https://github.com/tyler-dardis/Health-Center-Data-ELT/edit/main/README.md#data-wrangling)
-5. [Data Validation](https://github.com/tyler-dardis/Health-Center-Data-ELT/edit/main/README.md#data-validation)
-6. [Data Querying/Analysis](https://github.com/tyler-dardis/Health-Center-Data-ELT/edit/main/README.md#data-queryinganalysis)
+4. [Data Wrangling](https://github.com/tyler-dardis/Health-Center-Data-ELT#data-wrangling)
+5. [Data Validation](https://github.com/tyler-dardis/Health-Center-Data-ELT#data-validation)
+6. [Data Querying/Analysis](https://github.com/tyler-dardis/Health-Center-Data-ELT#data-queryinganalysis)
 
 ## Dataset
 The Health Resources and Services Administration (HRSA) oversees the national health center program, which includes 1,496 health centers serving 32.5 million patients across the U.S. In overseeing this program, HRSA collects financial and clinical data from health centers via the annual Uniform Data System report. While some of the data reported is proprietary and not publicly available, HRSA publishes some of the dataset. This dataset is available for download on their website in Excel format and includes the most recent five years of data. (I downloaded the dataset before and after the publication of the 2023 UDS report, so my data includes six years.)
