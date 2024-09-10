@@ -8,7 +8,7 @@
 <br><br>
 
 ## Summary
-In this ELT project, I created a MySQL database for storing and querying community health center data. Once the data was loaded into the appropriate tables, I used SQL to clean and manipulate the data to prepare it for future analysis. After the data had been wrangled, I queried the database to perform some high level data anlaysis.
+In this ELT project, I created a MySQL database for storing and querying community health center data. Once the data was loaded into the appropriate tables, I used SQL to wrangle the data to prepare it for future analysis. After the ELT process, I queried the database to perform some high level data analysis.
 
 **Note:** This page presents the project in a reader-friendly format, with some query outputs. All of the raw .sql files are also available in this repository.
 
