@@ -17,8 +17,8 @@ In this ELT project, I created a MySQL database for storing and querying communi
 2. [Create Tables](https://github.com/tyler-dardis/Health-Center-Data-ELT#create-tables)
 3. [Load Data](https://github.com/tyler-dardis/Health-Center-Data-ELT#load-data)
 4. [Data Wrangling](https://github.com/tyler-dardis/Health-Center-Data-ELT/edit/main/README.md#data-wrangling)
-5. Data Validation
-6. Data Querying/Data Analysis
+5. [Data Validation](https://github.com/tyler-dardis/Health-Center-Data-ELT/edit/main/README.md#data-validation)
+6. [Data Querying/Analysis](https://github.com/tyler-dardis/Health-Center-Data-ELT/edit/main/README.md#data-queryinganalysis)
 
 ## Dataset
 The Health Resources and Services Administration (HRSA) oversees the national health center program, which includes 1,496 health centers serving 32.5 million patients across the U.S. In overseeing this program, HRSA collects financial and clinical data from health centers via the annual Uniform Data System report. While some of the data reported is proprietary and not publicly available, HRSA publishes some of the dataset. This dataset is available for download on their website in Excel format and includes the most recent five years of data. (I downloaded the dataset before and after the publication of the 2023 UDS report, so my data includes six years.)
@@ -443,8 +443,9 @@ Because HRSA has dedicated staff that review all UDS report submissions each yea
 
 ### 'patient_age_race' Table
 In the original dataset, patient age ranges (<18, 18-64, >64) are reported as percentages of total patients. The following queries create new columns for patient counts (#) by age range and add values to them (calculated by multiplying 'total_patients' by the corresponding age range percentages).
+
 ```sql
--- Create new columns for patient counts
+-- Add new columns for patient counts
 ALTER TABLE patient_age_race
 ADD COLUMN children_count INT,
 ADD COLUMN adults_18to64_count INT,
@@ -458,8 +459,9 @@ SET children_count = ROUND(total_patients * children),
 ```
 
 NULL values do not necessarily represent 0 in the dataset. However, if only one of the age ranges is NULL, its missing value can be determined. The following two queries replace NULLs where their correct values can be deduced. (For example, if a row has a NULL value in the 'children' percentage column and the 'adults_18to64' and 'adults_over64' values are NOT NULL, we can calculate the value that should replace NULL so that the sum of the 3 columns equals 100%.)
+
 ```sql
--- Replace all NULLs in 'children' and 'children_count' columns where true values can be determined
+-- Replace all NULLs in age range columns where true values can be determined
 UPDATE patient_age_race 
 SET children = ROUND(1 - adults_18to64 - adults_over64, 7),
     children_count = (total_patients - adults_18to64_count - adults_over64_count)
@@ -467,7 +469,6 @@ WHERE children IS NULL
   AND adults_18to64 IS NOT NULL
   AND adults_over64 IS NOT NULL;
 
--- Replace all NULLs in 'adults_over64' and 'adults_over64_count' columns where true values can be determined
 UPDATE patient_age_race 
 SET adults_over64 = ROUND(1 - adults_18to64 - children, 7),
     adults_over64_count = (total_patients - adults_18to64_count - children_count)
@@ -477,6 +478,7 @@ WHERE children IS NOT NULL
 ```
 
 While NULL values in percentage columns do not necessarily equal 0%, it can be deduced that where total_patients equals 0, the age range counts also equal 0. (This is very uncommon in this dataset, but I did identify several health centers with 0 reported patients.)
+
 ```sql
 -- Set all age range counts to 0 where 'total_patients' is 0.
 UPDATE patient_age_race
@@ -487,6 +489,7 @@ WHERE total_patients = 0;
 ```
 
 To confirm that the sum of the new columns is equal to the 'total_patients' column, this query should return a 0 value. (Since NULL values do not necessarily equal 0, rows containing any NULL values in the count columns must be excluded from this validation query.)
+
 ```sql    
 -- Validate age range counts
 SELECT SUM(children_count + adults_18to64_count + adults_over64_count) - SUM(total_patients) AS patient_count_variance
@@ -498,68 +501,81 @@ WHERE children_count IS NOT NULL
 
 
 ### 'cost' Table
-Many of the 'total_cost_per_patient' values were reported as NULL. The following query calculates the correct values and updates all NULLs. To do this, the 'cost' and 'patient_age_race' tables are joined.
+Many of the 'total_cost_per_patient' values were NULL. The following query calculates the correct values and updates all NULLs. To do this, the 'cost' and 'patient_age_race' tables are joined.
 ```sql
 -- Update NULL values in 'total_cost_per_patient'
 UPDATE cost c
 JOIN patient_age_race p ON c.hc_name = p.hc_name AND c.year = p.year
 SET c.total_cost_per_patient = ROUND(c.total_cost / p.total_patients, 2)
 WHERE c.total_cost_per_patient IS NULL
-	AND p.total_patients <> 0 ;
+  AND p.total_patients <> 0 ;
+```
 
+### 'payer_mix_fpl' Table
+In the original dataset, payer mix is reported as percentages of total patients, similar to the age ranges in the 'patient_age_race' table. The following queries add new columns for patient counts (#) by payer type and add values to them (calculated by multiplying 'total_patients' by the corresponding payer type percentages)
 
-/* DATA WRANGLING: payer_mix_fpl TABLE */
-
--- In the original dataset, payer mix is reported as percentages of total patients. The following query creates new columns for patient counts (#) by payer type.
+```sql
+-- Add new columns for patient counts by payer type
 ALTER TABLE payer_mix_fpl
 ADD COLUMN uninsured_count INT,
 ADD COLUMN medicaid_count INT,
 ADD COLUMN medicare_count INT,
 ADD COLUMN other_payer_count INT;
 
--- Add patient counts to the new columns (by multiplying total_patients by the corresponding payer mix percentages)
+-- Add patient counts to the new columns
 UPDATE payer_mix_fpl AS pm
 JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.uninsured_count = ROUND(pm.uninsured * par.total_patients),
     pm.medicaid_count = ROUND(pm.medicaid * par.total_patients),
     pm.medicare_count = ROUND(pm.medicare * par.total_patients),
     pm.other_payer_count = ROUND(pm.other_payer * par.total_patients);
+```
 
--- Similar to the age ranges on the patient_age_race table, if only one of the payer columns is NULL, we can calculate its missing value. The following four queries replace NULLs where their correct values can be deduced.
+Also similar to the age ranges in the 'patient_age_race' table, if only one of the payer columns is NULL, its missing value can be determined. The following four queries replace NULLs where their correct values can be deduced.
+
+```sql
+-- Replace all NULLs in payer mix columns where true values can be determined
 UPDATE payer_mix_fpl AS pm
 JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.uninsured = ROUND(1 - pm.medicaid - pm.medicare - pm.other_payer, 7),
     pm.uninsured_count = (par.total_patients - pm.medicaid_count - pm.medicare_count - pm.other_payer_count)
 WHERE pm.uninsured IS NULL
-	AND pm.medicaid IS NOT NULL
-	AND pm.medicare IS NOT NULL
-    AND pm.other_payer IS NOT NULL;
+  AND pm.medicaid IS NOT NULL
+  AND pm.medicare IS NOT NULL
+  AND pm.other_payer IS NOT NULL;
+
 UPDATE payer_mix_fpl AS pm
 JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.medicaid = ROUND(1 - pm.uninsured - pm.medicare - pm.other_payer, 7),
     pm.medicaid_count = (par.total_patients - pm.uninsured_count - pm.medicare_count - pm.other_payer_count)
 WHERE pm.uninsured IS NOT NULL
-	AND pm.medicaid IS NULL
-	AND pm.medicare IS NOT NULL
-    AND pm.other_payer IS NOT NULL;
+  AND pm.medicaid IS NULL
+  AND pm.medicare IS NOT NULL
+  AND pm.other_payer IS NOT NULL;
+
 UPDATE payer_mix_fpl AS pm
 JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.medicare = ROUND(1 - pm.uninsured - pm.medicaid - pm.other_payer, 7),
     pm.medicare_count = (par.total_patients - pm.uninsured_count - pm.medicaid_count - pm.other_payer_count)
 WHERE pm.uninsured IS NOT NULL
-	AND pm.medicaid IS NOT NULL
-	AND pm.medicare IS NULL
-    AND pm.other_payer IS NOT NULL;
+  AND pm.medicaid IS NOT NULL
+  AND pm.medicare IS NULL
+  AND pm.other_payer IS NOT NULL;
+
 UPDATE payer_mix_fpl AS pm
 JOIN patient_age_race AS par ON pm.hc_name = par.hc_name AND pm.year = par.year
 SET pm.other_payer = ROUND(1 - pm.uninsured - pm.medicaid - pm.medicare, 7),
     pm.other_payer_count = (par.total_patients - pm.uninsured_count - pm.medicaid_count - pm.medicare_count)
 WHERE pm.uninsured IS NOT NULL
-	AND pm.medicaid IS NOT NULL
-	AND pm.medicare IS NOT NULL
-    AND pm.other_payer IS NULL;
+  AND pm.medicaid IS NOT NULL
+  AND pm.medicare IS NOT NULL
+  AND pm.other_payer IS NULL;
+```
 
--- Set all other payers to 0 where one payer is 100%. (Some of these instances are reported as NULL in the original dataset.)
+It can also be deduced that where one payer is 100%, all others are 0%.
+
+```sql
+-- Set payer mix values to 0 where appropriate
 UPDATE payer_mix_fpl
 SET medicaid = 0,
     medicaid_count = 0,
@@ -568,6 +584,7 @@ SET medicaid = 0,
     other_payer = 0,
     other_payer_count = 0
 WHERE uninsured = 1;
+
 UPDATE payer_mix_fpl
 SET uninsured = 0,
     uninsured_count = 0,
@@ -576,6 +593,7 @@ SET uninsured = 0,
     other_payer = 0,
     other_payer_count = 0
 WHERE medicaid = 1;
+
 UPDATE payer_mix_fpl
 SET uninsured = 0,
     uninsured_count = 0,
@@ -584,6 +602,7 @@ SET uninsured = 0,
     other_payer = 0,
     other_payer_count = 0
 WHERE medicare = 1;
+
 UPDATE payer_mix_fpl
 SET uninsured = 0,
     uninsured_count = 0,
@@ -592,10 +611,13 @@ SET uninsured = 0,
     medicare = 0,
     medicare_count = 0
 WHERE other_payer = 1;
+```
 
-/* DATA WRANGLING: services TABLE */
+### 'services' Table
+Similar to tables above, services rendered are reported as percentages of total patients. The following query add new columns for patient counts (#) for each service type and add values to them (calculated by multiplying 'total_patients' by the corresponding service type percentages)
 
--- Similar to tables above, services rendered are reported as percentages of total patients. The following query creates new columns for patient counts (#) for each service type.
+```sql
+-- Add new columns for patient counts by service type
 ALTER TABLE services
 ADD COLUMN medical_count INT,
 ADD COLUMN dental_count INT,
@@ -604,7 +626,7 @@ ADD COLUMN substance_abuse_count INT,
 ADD COLUMN vision_count INT,
 ADD COLUMN enabling_count INT;
 
--- Add patient counts to the new columns (by multiplying total_patients by the corresponding service type percentages)
+-- Add patient counts to the new columns
 UPDATE services AS s
 JOIN patient_age_race AS par ON s.hc_name = par.hc_name AND s.year = par.year
 SET s.medical_count = ROUND(s.medical * par.total_patients),
@@ -613,12 +635,12 @@ SET s.medical_count = ROUND(s.medical * par.total_patients),
     s.substance_abuse_count = ROUND(s.substance_abuse * par.total_patients),
     s.vision_count = ROUND(s.vision * par.total_patients),
     s.enabling_count = ROUND(s.enabling * par.total_patients);
+```
+### 'sites' Table
+Health center site zip codes were not reported consistently, as some included a 4-digit extension, while others did not. The following queries standardize the format.
 
-
-
-/* DATA WRANGLING: sites TABLE */
-
--- Standardize site zip codes
+```sql
+-- Standardize service delivery site zip codes
 ALTER TABLE sites
 ADD COLUMN site_zipcode_ext VARCHAR(4)
 AFTER site_zipcode;
@@ -629,7 +651,7 @@ SET site_zipcode_ext = CASE
     END,
     site_zipcode = LEFT(site_zipcode, 5);
     
--- Standardize admin zip codes
+-- Standardize admin/master site zip codes
 ALTER TABLE sites
 ADD COLUMN hc_zipcode_ext VARCHAR(4)
 AFTER hc_zipcode;
@@ -639,7 +661,10 @@ SET hc_zipcode_ext = CASE
         ELSE RIGHT(hc_zipcode, 4)
     END,
     hc_zipcode = LEFT(hc_zipcode, 5);
+```
+Phone numbers were also not reported consistently, some including an extension.
 
+```sql
 -- Standardize phone numbers
 ALTER TABLE sites
 ADD COLUMN site_phone_ext VARCHAR(15)
@@ -652,5 +677,278 @@ SET site_phone_ext = CASE
     site_phone = LEFT(site_phone, 12);
 ```
 
+## Data Validation
+To validate the accuracy of the data after wrangling, I used the following queries to compare my processed data with the national aggregated summaries published on the [HRSA website](https://data.hrsa.gov/tools/data-reporting/program-data/national).
 
+**Note:** HRSA publishes separate national summaries for FQHC and Look-Alike health centers. The queries below validate FQHC data. To validate Look-Alike data, the same queries could be run with 'Look-Alike' replacing 'FQHC' in the WHERE clause.
 
+```sql
+-- Confirm patient counts by age range
+SELECT year,
+       SUM(total_patients),
+       SUM(children_count),
+       SUM(adults_18to64_count),
+       SUM(adults_over64_count)
+FROM patient_age_race
+WHERE hc_type = 'FQHC'
+GROUP BY year;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Confirm patient counts by payer type
+SELECT year,
+       SUM(uninsured_count),
+       SUM(medicaid_count),
+       SUM(medicare_count),
+       SUM(other_payer_count)
+FROM payer_mix_fpl
+WHERE hc_type = 'FQHC'
+GROUP BY year;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Confirm patient counts by service type
+SELECT year,
+       SUM(medical_count),
+       SUM(dental_count),
+       SUM(mental_health_count),
+       SUM(substance_abuse_count),
+       SUM(vision_count),
+       SUM(enabling_count)
+FROM services
+WHERE hc_type = 'FQHC'
+GROUP BY year;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Confirm cost and grant expenditure totals (JOIN is used to calculate national cost per patient)
+SELECT c.year,
+       SUM(total_cost),
+       SUM(svc_grant_exp),
+       ROUND(SUM(total_cost)/SUM(total_patients), 2) AS total_cost_per_patient
+FROM cost AS c
+JOIN patient_age_race AS p ON c.hc_name = p.hc_name AND c.year = p.year
+WHERE c.hc_type = 'FQHC'
+GROUP BY c.year;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+### Conclusion:
+Most national totals in my dataset match exactly with HRSA's published national totals. Some totals show small variances due to NULL values at the health center level, where HRSA suppresses patient count values less than 16 for confidentiality, causing these values to be included in HRSA's aggregated totals but excluded from mine. These variances are negligible, representing a difference of less than 0.001% between datasets. (Note that these variances were also minimized during data wrangling, when NULL values were replaced where their true values could be deduced.)
+
+## Data Querying/Analysis
+After completing the ELT process, I used the queries below for some high level, exploratory data analysis.
+
+First, to display full state names in my query results and differentiate between states (including DC) and territories, I ran this query to create a temporary table for use later.
+
+```sql
+-- Create temporary table containing full state names and state/territory type
+CREATE TEMPORARY TABLE state_names AS
+SELECT DISTINCT site_state AS state,
+       site_state_name AS state_name,
+       CASE WHEN site_state_fips_code BETWEEN 1 AND 59 THEN 'state'
+            ELSE 'territory'
+       END AS state_type
+FROM sites;
+```
+
+### Patient Demographics
+
+```sql
+-- FQHC patient age distribution (national) by year
+SELECT year,
+       SUM(children_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_children,
+       SUM(adults_18to64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_adults_18to64,
+       SUM(adults_over64_count)/(SUM(children_count)+SUM(adults_18to64_count)+SUM(adults_over64_count))*100 AS pct_adults_over64
+FROM patient_age_race
+WHERE hc_type = 'FQHC'
+GROUP BY year;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- FQHC patient age distribution by state (5-year average)
+SELECT s.state_name,
+       SUM(p.children_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_children,
+       SUM(p.adults_18to64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_adults_18to64,
+       SUM(p.adults_over64_count)/(SUM(p.children_count)+SUM(p.adults_18to64_count)+SUM(p.adults_over64_count))*100 AS pct_adults_over64
+FROM patient_age_race AS p
+JOIN state_names AS s ON p.state = s.state
+WHERE p.year BETWEEN 2019 AND 2023
+  AND p.hc_type = 'FQHC'
+  AND s.state_type = 'state'
+GROUP BY s.state_name
+ORDER BY s.state_name;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Top 10 health centers with the highest percentage of patients representing racial or ethnic minorities in 2023 (excluding health centers based in US territories)
+SELECT p.hc_name,
+       p.city,
+       p.state,
+       p.hc_type,
+       ROUND(p.race_ethno_minority*100, 2) AS pct_race_ethno_minority
+FROM patient_age_race AS p
+JOIN state_names AS s ON p.state = s.state
+WHERE p.year = 2023
+  AND s.state_type = 'state'
+GROUP BY p.hc_name, p.city, p.state
+ORDER BY pct_race_ethno_minority DESC
+LIMIT 10;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Number of patients served at FQHCs in US territories in years 2018-2023
+SELECT s.state_name AS territory_name,
+       SUM(CASE WHEN p.year = 2018 THEN p.total_patients ELSE 0 END) AS pts_2018,
+       SUM(CASE WHEN p.year = 2019 THEN p.total_patients ELSE 0 END) AS pts_2019,
+       SUM(CASE WHEN p.year = 2020 THEN p.total_patients ELSE 0 END) AS pts_2020,
+       SUM(CASE WHEN p.year = 2021 THEN p.total_patients ELSE 0 END) AS pts_2021,
+       SUM(CASE WHEN p.year = 2022 THEN p.total_patients ELSE 0 END) AS pts_2022,
+       SUM(CASE WHEN p.year = 2023 THEN p.total_patients ELSE 0 END) AS pts_2023
+FROM patient_age_race AS p
+JOIN state_names AS s ON p.state = s.state
+WHERE s.state_type = 'territory'
+  AND p.hc_type = 'fqhc'
+GROUP BY s.state_name
+ORDER BY pts_2023 DESC;
+```
+
+### Clinical Outcomes and Metrics
+
+```sql
+-- Preventive screening rates at the 5 largest FQHCs in 2023
+-- (For the purpose of this query, FQHC size is determined by total_patients in 2023)
+SELECT c.hc_name,
+       c.city,
+       c.state,
+       p.total_patients,
+       ROUND(c.cervical_cancer_screening*100, 2) AS cervical_cancer,
+       ROUND(c.adult_tobacco_use_screening*100, 2) AS adult_tobacco_use,
+       ROUND(c.colorectal_cancer_screening*100, 2) AS colorectal_cancer,
+       ROUND(c.depression_screening*100, 2) AS depression,
+       ROUND(c.breast_cancer_screening*100, 2) AS breast_cancer,
+       ROUND(c.hiv_screening*100, 2) AS hiv
+FROM clinical_data AS c
+JOIN patient_age_race AS p ON c.hc_name = p.hc_name AND c.year = p.year
+WHERE c.year = 2023
+  AND c.hc_type = 'FQHC'
+ORDER BY p.total_patients DESC
+LIMIT 5;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Percentage of FQHC patients with hypertension, diabetes, and asthma (5 year average)
+SELECT ROUND(AVG(hypertension)*100, 2) AS hypertension_pct,
+       ROUND(AVG(diabetes)*100, 2) AS diabetes_pct,
+       ROUND(AVG(asthma)*100, 2) AS asthma_pct,
+       ROUND(AVG(hiv)*100, 2) AS hiv_pct
+FROM clinical_data
+WHERE year BETWEEN 2019 AND 2023;
+```
+
+### Costs and Grant Expenditures
+
+```sql
+-- Percentage of total costs funded by service grants each year
+SELECT year,
+       ROUND(SUM(svc_grant_exp)/SUM(total_cost)*100, 2) AS pct_grant_funded
+FROM cost
+WHERE hc_type = 'FQHC'
+GROUP BY year;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Top 5 states with the highest grant expenditure per patient in 2023
+SELECT s.state_name,
+       ROUND(SUM(c.svc_grant_exp)/SUM(p.total_patients), 2) AS grant_exp_per_patient
+FROM cost c
+JOIN patient_age_race AS p ON c.hc_name = p.hc_name AND c.year = p.year
+JOIN state_names AS s ON c.state = s.state
+WHERE c.year = 2023
+  AND c.hc_type = 'FQHC'
+  AND s.state_type = 'state'
+GROUP BY s.state_name
+ORDER BY grant_exp_per_patient DESC
+LIMIT 5;
+```
+
+### Payer Mix and Socioeconomic Factors
+
+```sql
+-- Average payer mix by year at health centers with over 75% of patients at or below 100% Federal Poverty Line
+SELECT year, 
+       ROUND(AVG(medicaid)*100, 2) AS avg_medicaid_pct, 
+       ROUND(AVG(medicare)*100, 2) AS avg_medicare_pct,
+       ROUND(AVG(other_payer)*100, 2) AS avg_other_payer_pct,
+       ROUND(AVG(uninsured)*100, 2) AS avg_uninsured_pct
+FROM payer_mix_fpl
+WHERE patients_at_below_100_fpl > 0.75
+GROUP BY year
+ORDER BY year;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Number of FQHCs where total costs associated with uninsured patients exceed total service grant expenditures.
+SELECT pm.year,
+       COUNT(*) AS fqhc_count
+FROM payer_mix_fpl AS pm
+JOIN cost AS c ON pm.hc_name = c.hc_name AND pm.year = c.year
+WHERE c.svc_grant_exp < (c.total_cost_per_patient*pm.uninsured_count)
+  AND pm.hc_type = 'FQHC'
+GROUP BY year
+ORDER BY year;
+```
+
+### Service Utilization
+
+```sql
+-- Average service utilization (as % of total patients) at health centers serving less than 2,500 patients each year.
+SELECT s.year,
+       ROUND(AVG(s.medical)*100, 2) AS avg_medical_pct,
+       ROUND(AVG(s.dental)*100, 2) AS avg_dental_pct,
+       ROUND(AVG(s.mental_health)*100, 2) AS avg_mental_health_pct
+FROM services AS s
+JOIN patient_age_race AS p ON s.hc_name = p.hc_name AND s.year = p.year
+WHERE p.total_patients < 2500
+GROUP BY s.year
+ORDER BY s.year;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Comparing mental health utilization and depression screening rates.
+-- (This query excludes health centers that do not provide mental health services.)
+WITH dep_screen_ranges AS (
+     SELECT hc_name,
+            year,
+            depression_screening,
+            CASE WHEN depression_screening < 0.25 THEN '0_to_24_pct'
+		 WHEN depression_screening >= 0.25 AND depression_screening < 0.5 THEN '25_to_49_pct'
+                 WHEN depression_screening >= 0.5 AND depression_screening < 0.75 THEN '50_to_74_pct'
+                 ELSE '75_to_100_pct'
+            END AS dep_screening_bin
+     FROM clinical_data
+)
+SELECT d.dep_screening_bin,
+       ROUND(AVG(s.mental_health)*100, 2) AS avg_mental_health_utilization
+FROM dep_screen_ranges AS d
+JOIN services AS s ON d.hc_name = s.hc_name AND d.year = s.year
+WHERE s.mental_health > 0
+GROUP BY d.dep_screening_bin
+ORDER BY d.dep_screening_bin;
+```
+# INSERT SCREENSHOT OF OUTPUT HERE
+
+```sql
+-- Drop temporary table created for above queries
+DROP TEMPORARY TABLE state_names;
+```
